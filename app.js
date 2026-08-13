@@ -3,6 +3,7 @@ const cors = require("cors");
 const morgan = require("morgan");
 
 const webhookRoutes = require("./routes/webhook.routes");
+const apiRoutes = require("./routes/api.routes");
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 app.use("/webhook", webhookRoutes);
+app.use("/api", apiRoutes);
 
 app.get("/", (req, res) => {
     res.json({

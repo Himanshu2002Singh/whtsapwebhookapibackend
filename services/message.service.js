@@ -2,6 +2,79 @@ const whatsappService = require("./whatsapp.service");
 
 class MessageService {
 
+    constructor() {
+        this.store = {
+            conversations: {}, // key: phone -> conversation summary
+            threads: {}, // key: phone -> array of messages
+        };
+    }
+
+    // return list of conversations
+    getConversations() {
+        return Object.values(this.store.conversations);
+    }
+
+    // return thread for a phone (conversation id)
+    getThread(id) {
+        return this.store.threads[id] || [];
+    }
+
+    // record incoming message into store
+    recordIncoming(customerName, customerNumber, message) {
+        const id = customerNumber;
+        const text = message.type === 'text' ? message.text?.body || '' : `[${message.type}]`;
+        const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+        // add thread entry
+        if (!this.store.threads[id]) this.store.threads[id] = [];
+        this.store.threads[id].push({ id: message.id || `m${Date.now()}`, direction: 'in', text, time });
+
+        // update conversation summary
+        this.store.conversations[id] = {
+            id,
+            contactName: customerName || id,
+            phone: id,
+            avatarColor: 'bg-brand-500',
+            preview: text,
+            time,
+            unread: 1,
+            status: 'open',
+            assignee: '',
+            channel: 'WhatsApp',
+            pinned: false,
+            tags: [],
+        };
+    }
+
+    // record outgoing message into store
+    recordOutgoing(to, text, status = 'sent') {
+        const id = to;
+        const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        if (!this.store.threads[id]) this.store.threads[id] = [];
+        this.store.threads[id].push({ id: `m${Date.now()}`, direction: 'out', text, time, status });
+
+        // update conversation preview/time
+        if (!this.store.conversations[id]) {
+            this.store.conversations[id] = {
+                id,
+                contactName: id,
+                phone: id,
+                avatarColor: 'bg-brand-500',
+                preview: text,
+                time,
+                unread: 0,
+                status: 'open',
+                assignee: '',
+                channel: 'WhatsApp',
+                pinned: false,
+                tags: [],
+            };
+        } else {
+            this.store.conversations[id].preview = text;
+            this.store.conversations[id].time = time;
+        }
+    }
+
     async handleIncomingMessage(customerName, customerNumber, message) {
 
         try {
@@ -16,6 +89,13 @@ class MessageService {
 
             // Mark message as read
             await whatsappService.markAsRead(message.id);
+
+            // store incoming message for UI
+            try {
+                this.recordIncoming(customerName, customerNumber, message);
+            } catch (e) {
+                console.log('Store record error', e);
+            }
 
             switch (message.type) {
 

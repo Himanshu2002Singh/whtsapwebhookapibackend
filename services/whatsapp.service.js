@@ -34,8 +34,10 @@ class WhatsAppService {
 
         } catch (err) {
 
-            console.log(err.response?.data || err.message);
 
+            console.log(err.response?.data || err.message);
+            // Rethrow so callers can handle failures
+            throw err;
         }
 
     }
@@ -60,6 +62,7 @@ class WhatsAppService {
         } catch (err) {
 
             console.log(err.response?.data || err.message);
+            throw err;
 
         }
 
@@ -90,6 +93,7 @@ class WhatsAppService {
         } catch (err) {
 
             console.log(err.response?.data || err.message);
+            throw err;
 
         }
 
@@ -120,6 +124,7 @@ class WhatsAppService {
         } catch (err) {
 
             console.log(err.response?.data || err.message);
+            throw err;
 
         }
 
@@ -149,6 +154,7 @@ class WhatsAppService {
         } catch (err) {
 
             console.log(err.response?.data || err.message);
+            throw err;
 
         }
 
@@ -178,6 +184,7 @@ class WhatsAppService {
         } catch (err) {
 
             console.log(err.response?.data || err.message);
+            throw err;
 
         }
 
