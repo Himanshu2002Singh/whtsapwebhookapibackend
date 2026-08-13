@@ -91,3 +91,39 @@ router.get('/threads/:id', requireAppToken, (req, res) => {
         return res.status(500).json({ success: false, message: err.message });
     }
 });
+
+// Contacts - derived from conversations store
+router.get('/contacts', requireAppToken, (req, res) => {
+    try {
+        const convs = messageService.getConversations();
+        const contacts = convs.map((c) => ({
+            id: c.id,
+            name: c.contactName || c.phone,
+            phone: c.phone,
+            avatarColor: c.avatarColor || 'bg-brand-500',
+            tags: c.tags || [],
+            optIn: true,
+            lastSeen: c.time || '',
+            createdAt: '',
+            owner: c.assignee || '',
+        }));
+
+        return res.json({ success: true, data: contacts });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Create contact
+router.post('/contacts', requireAppToken, (req, res) => {
+    try {
+        const { name, phone, tags, owner, optIn } = req.body;
+        if (!phone) return res.status(400).json({ success: false, message: 'phone is required' });
+
+        const contact = messageService.addContact({ name, phone, tags, owner, optIn });
+
+        return res.status(201).json({ success: true, data: contact });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});

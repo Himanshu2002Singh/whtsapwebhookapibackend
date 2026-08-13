@@ -6,6 +6,7 @@ class MessageService {
         this.store = {
             conversations: {}, // key: phone -> conversation summary
             threads: {}, // key: phone -> array of messages
+            contacts: [], // array of contact objects
         };
     }
 
@@ -17,6 +18,49 @@ class MessageService {
     // return thread for a phone (conversation id)
     getThread(id) {
         return this.store.threads[id] || [];
+    }
+
+    // contacts
+    getContacts() {
+        return this.store.contacts;
+    }
+
+    addContact(contact) {
+        const c = {
+            id: contact.id || contact.phone,
+            name: contact.name || contact.phone,
+            phone: contact.phone,
+            avatarColor: contact.avatarColor || 'bg-brand-500',
+            tags: contact.tags || [],
+            optIn: typeof contact.optIn === 'boolean' ? contact.optIn : true,
+            lastSeen: contact.lastSeen || '',
+            createdAt: new Date().toISOString(),
+            owner: contact.owner || '',
+        };
+        // avoid duplicates by phone
+        const exists = this.store.contacts.find((x) => x.phone === c.phone);
+        if (exists) return exists;
+        this.store.contacts.push(c);
+
+        // also ensure conversation summary exists
+        if (!this.store.conversations[c.phone]) {
+            this.store.conversations[c.phone] = {
+                id: c.phone,
+                contactName: c.name,
+                phone: c.phone,
+                avatarColor: c.avatarColor,
+                preview: '',
+                time: '',
+                unread: 0,
+                status: 'open',
+                assignee: c.owner,
+                channel: 'WhatsApp',
+                pinned: false,
+                tags: c.tags,
+            };
+        }
+
+        return c;
     }
 
     // record incoming message into store
