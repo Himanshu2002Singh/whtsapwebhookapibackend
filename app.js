@@ -7,7 +7,12 @@ const apiRoutes = require("./routes/api.routes");
 
 const app = express();
 
-app.use(cors());
+// trust proxy when running behind a reverse proxy (nginx)
+app.set('trust proxy', true);
+
+// restrict CORS to configured webhook URL in production
+const allowedOrigin = process.env.WEBHOOK_URL || '*';
+app.use(cors({ origin: allowedOrigin }));
 
 app.use(express.json());
 

@@ -4,6 +4,7 @@ const router = express.Router();
 
 const whatsappService = require("../services/whatsapp.service");
 const messageService = require("../services/message.service");
+const appState = require("../services/appState.service");
 const axiosClient = require("../confiq/axios");
 
 // Simple app-token check. Frontend should send header 'x-app-token'.
@@ -126,4 +127,52 @@ router.post('/contacts', requireAppToken, (req, res) => {
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
     }
+});
+
+const collectionKeys = new Set(['templates', 'broadcasts', 'automations', 'team']);
+
+function requireCollection(req, res, next) {
+    if (!collectionKeys.has(req.params.collection)) {
+        return res.status(404).json({ success: false, message: 'Unknown collection' });
+    }
+    next();
+}
+
+router.get('/settings/state', requireAppToken, (req, res) => {
+    return res.json({ success: true, data: appState.getSettings() });
+});
+
+router.patch('/settings/state', requireAppToken, (req, res) => {
+    return res.json({ success: true, data: appState.updateSettings(req.body || {}) });
+});
+
+router.get('/analytics/summary', requireAppToken, (req, res) => {
+    return res.json({ success: true, data: appState.analytics() });
+});
+
+router.get('/:collection', requireAppToken, requireCollection, (req, res) => {
+    return res.json({ success: true, data: appState.list(req.params.collection) });
+});
+
+router.post('/:collection', requireAppToken, requireCollection, (req, res) => {
+    const item = appState.create(req.params.collection, req.body || {});
+    return res.status(201).json({ success: true, data: item });
+});
+
+router.patch('/:collection/:id', requireAppToken, requireCollection, (req, res) => {
+    const item = appState.update(req.params.collection, req.params.id, req.body || {});
+    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+    return res.json({ success: true, data: item });
+});
+
+router.post('/:collection/:id/duplicate', requireAppToken, requireCollection, (req, res) => {
+    const item = appState.duplicate(req.params.collection, req.params.id);
+    if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+    return res.status(201).json({ success: true, data: item });
+});
+
+router.delete('/:collection/:id', requireAppToken, requireCollection, (req, res) => {
+    const removed = appState.remove(req.params.collection, req.params.id);
+    if (!removed) return res.status(404).json({ success: false, message: 'Item not found' });
+    return res.json({ success: true });
 });
