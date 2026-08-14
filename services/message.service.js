@@ -1,4 +1,5 @@
 const whatsappService = require("./whatsapp.service");
+const { Contact, Conversation, Message } = require('../models');
 
 class MessageService {
 
@@ -25,7 +26,7 @@ class MessageService {
         return this.store.contacts;
     }
 
-    addContact(contact) {
+    async addContact(contact) {
         const c = {
             id: contact.id || contact.phone,
             name: contact.name || contact.phone,
@@ -41,6 +42,21 @@ class MessageService {
         const exists = this.store.contacts.find((x) => x.phone === c.phone);
         if (exists) return exists;
         this.store.contacts.push(c);
+
+        // persist contact
+        try {
+            await Contact.upsert({
+                phone: c.phone,
+                name: c.name,
+                avatarColor: c.avatarColor,
+                tags: c.tags,
+                optIn: c.optIn,
+                lastSeen: c.lastSeen,
+                owner: c.owner
+            });
+        } catch (e) {
+            console.log('Contact persist error', e.message || e);
+        }
 
         // also ensure conversation summary exists
         if (!this.store.conversations[c.phone]) {
@@ -64,14 +80,15 @@ class MessageService {
     }
 
     // record incoming message into store
-    recordIncoming(customerName, customerNumber, message) {
+    async recordIncoming(customerName, customerNumber, message) {
         const id = customerNumber;
         const text = message.type === 'text' ? message.text?.body || '' : `[${message.type}]`;
         const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
         // add thread entry
         if (!this.store.threads[id]) this.store.threads[id] = [];
-        this.store.threads[id].push({ id: message.id || `m${Date.now()}`, direction: 'in', text, time });
+        const mid = message.id || `m${Date.now()}`;
+        this.store.threads[id].push({ id: mid, direction: 'in', text, time });
 
         // update conversation summary
         this.store.conversations[id] = {
@@ -88,14 +105,46 @@ class MessageService {
             pinned: false,
             tags: [],
         };
+
+        // persist to DB: ensure contact, conversation and message
+        try {
+            await Contact.findOrCreate({ where: { phone: id }, defaults: { name: customerName || id } });
+
+            await Conversation.upsert({
+                id,
+                contactName: customerName || id,
+                phone: id,
+                avatarColor: 'bg-brand-500',
+                preview: text,
+                time,
+                unread: 1,
+                status: 'open',
+                assignee: '',
+                channel: 'WhatsApp',
+                pinned: false,
+                tags: []
+            });
+
+            await Message.create({
+                id: mid,
+                conversationId: id,
+                direction: 'in',
+                text,
+                time,
+                status: 'received'
+            });
+        } catch (e) {
+            console.log('Persist incoming error', e.message || e);
+        }
     }
 
     // record outgoing message into store
-    recordOutgoing(to, text, status = 'sent') {
+    async recordOutgoing(to, text, status = 'sent') {
         const id = to;
         const time = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         if (!this.store.threads[id]) this.store.threads[id] = [];
-        this.store.threads[id].push({ id: `m${Date.now()}`, direction: 'out', text, time, status });
+        const mid = `m${Date.now()}`;
+        this.store.threads[id].push({ id: mid, direction: 'out', text, time, status });
 
         // update conversation preview/time
         if (!this.store.conversations[id]) {
@@ -117,6 +166,28 @@ class MessageService {
             this.store.conversations[id].preview = text;
             this.store.conversations[id].time = time;
         }
+
+        // persist outgoing
+        try {
+            await Contact.findOrCreate({ where: { phone: id }, defaults: { name: id } });
+            await Conversation.upsert({
+                id,
+                contactName: this.store.conversations[id]?.contactName || id,
+                phone: id,
+                preview: text,
+                time,
+            });
+            await Message.create({
+                id: mid,
+                conversationId: id,
+                direction: 'out',
+                text,
+                time,
+                status
+            });
+        } catch (e) {
+            console.log('Persist outgoing error', e.message || e);
+        }
     }
 
     async handleIncomingMessage(customerName, customerNumber, message) {
@@ -134,9 +205,9 @@ class MessageService {
             // Mark message as read
             await whatsappService.markAsRead(message.id);
 
-            // store incoming message for UI
+            // store incoming message for UI and persist
             try {
-                this.recordIncoming(customerName, customerNumber, message);
+                await this.recordIncoming(customerName, customerNumber, message);
             } catch (e) {
                 console.log('Store record error', e);
             }
@@ -269,6 +340,7 @@ Welcome to TrustingBrains IT Services.
 How can I help you today?`
             );
 
+            try { await this.recordOutgoing(customerNumber, `Hello ${customerName},\n\nWelcome to TrustingBrains IT Services.\n\nHow can I help you today?`); } catch(e) { console.log('recordOutgoing err', e); }
             return;
         }
 
@@ -291,6 +363,7 @@ How can I help you today?`
 Reply with course name.`
             );
 
+                try { await this.recordOutgoing(customerNumber, `Available Courses\n\n1. Full Stack Development\n\n2. React JS\n\n3. Node JS\n\n4. Flutter\n\n5. Python\n\nReply with course name.`); } catch(e) { console.log('recordOutgoing err', e); }
             return;
         }
 
@@ -301,17 +374,16 @@ Reply with course name.`
                 `Please tell us which course you are interested in.`
             );
 
+                try { await this.recordOutgoing(customerNumber, `Please tell us which course you are interested in.`); } catch(e) { console.log('recordOutgoing err', e); }
             return;
         }
 
-        await whatsappService.sendTextMessage(
-            customerNumber,
-            `Hello ${customerName}
+            await whatsappService.sendTextMessage(
+                customerNumber,
+                `Hello ${customerName}\n\nYou sent:\n\n${text}`
+            );
 
-You sent:
-
-${text}`
-        );
+            try { await this.recordOutgoing(customerNumber, `Hello ${customerName}\n\nYou sent:\n\n${text}`); } catch(e) { console.log('recordOutgoing err', e); }
 
     }
 
@@ -324,6 +396,8 @@ ${text}`
             "Image received successfully."
         );
 
+        try { await this.recordOutgoing(customerNumber, "Image received successfully."); } catch(e) { console.log('recordOutgoing err', e); }
+
     }
 
     async handleVideoMessage(customerName, customerNumber, message) {
@@ -334,6 +408,8 @@ ${text}`
             customerNumber,
             "Video received successfully."
         );
+
+        try { await this.recordOutgoing(customerNumber, "Video received successfully."); } catch(e) { console.log('recordOutgoing err', e); }
 
     }
 
@@ -346,6 +422,8 @@ ${text}`
             "Audio received successfully."
         );
 
+        try { await this.recordOutgoing(customerNumber, "Audio received successfully."); } catch(e) { console.log('recordOutgoing err', e); }
+
     }
 
     async handleDocumentMessage(customerName, customerNumber, message) {
@@ -356,6 +434,8 @@ ${text}`
             customerNumber,
             "Document received successfully."
         );
+
+        try { await this.recordOutgoing(customerNumber, "Document received successfully."); } catch(e) { console.log('recordOutgoing err', e); }
 
     }
 
@@ -368,12 +448,10 @@ ${text}`
 
         await whatsappService.sendTextMessage(
             customerNumber,
-            `Location Received
-
-Latitude : ${latitude}
-
-Longitude : ${longitude}`
+            `Location Received\n\nLatitude : ${latitude}\n\nLongitude : ${longitude}`
         );
+
+        try { await this.recordOutgoing(customerNumber, `Location Received\n\nLatitude : ${latitude}\n\nLongitude : ${longitude}`); } catch(e) { console.log('recordOutgoing err', e); }
 
     }
 
@@ -386,18 +464,20 @@ Longitude : ${longitude}`
             "Contact received successfully."
         );
 
+        try { await this.recordOutgoing(customerNumber, "Contact received successfully."); } catch(e) { console.log('recordOutgoing err', e); }
+
     }
 
     async handleButtonMessage(customerName, customerNumber, message) {
 
         console.log(message.button);
 
-        await whatsappService.sendTextMessage(
-            customerNumber,
-            `Button Clicked
+            await whatsappService.sendTextMessage(
+                customerNumber,
+                `Button Clicked\n\n${message.button.text}`
+            );
 
-${message.button.text}`
-        );
+            try { await this.recordOutgoing(customerNumber, `Button Clicked\n\n${message.button.text}`); } catch(e) { console.log('recordOutgoing err', e); }
 
     }
 
@@ -409,10 +489,10 @@ ${message.button.text}`
 
             await whatsappService.sendTextMessage(
                 customerNumber,
-                `Button Selected
-
-${message.interactive.button_reply.title}`
+                `Button Selected\n\n${message.interactive.button_reply.title}`
             );
+
+            try { await this.recordOutgoing(customerNumber, `Button Selected\n\n${message.interactive.button_reply.title}`); } catch(e) { console.log('recordOutgoing err', e); }
 
             return;
         }
@@ -421,14 +501,62 @@ ${message.interactive.button_reply.title}`
 
             await whatsappService.sendTextMessage(
                 customerNumber,
-                `Selected
-
-${message.interactive.list_reply.title}`
+                `Selected\n\n${message.interactive.list_reply.title}`
             );
+
+            try { await this.recordOutgoing(customerNumber, `Selected\n\n${message.interactive.list_reply.title}`); } catch(e) { console.log('recordOutgoing err', e); }
 
             return;
         }
 
+    }
+
+    // load persisted data into in-memory store
+    async loadFromDB() {
+        try {
+            const contacts = await Contact.findAll();
+            this.store.contacts = contacts.map(c => ({
+                id: c.phone,
+                name: c.name,
+                phone: c.phone,
+                avatarColor: c.avatarColor || 'bg-brand-500',
+                tags: c.tags || [],
+                optIn: c.optIn,
+                lastSeen: c.lastSeen,
+                createdAt: c.createdAt,
+                owner: c.owner
+            }));
+
+            const convs = await Conversation.findAll();
+            this.store.conversations = {};
+            convs.forEach(c => {
+                this.store.conversations[c.phone] = {
+                    id: c.id,
+                    contactName: c.contactName,
+                    phone: c.phone,
+                    avatarColor: c.avatarColor || 'bg-brand-500',
+                    preview: c.preview || '',
+                    time: c.time || '',
+                    unread: c.unread || 0,
+                    status: c.status || 'open',
+                    assignee: c.assignee || '',
+                    channel: c.channel || 'WhatsApp',
+                    pinned: c.pinned || false,
+                    tags: c.tags || []
+                };
+            });
+
+            const msgs = await Message.findAll({ order: [['createdAt','ASC']] });
+            this.store.threads = {};
+            msgs.forEach(m => {
+                if (!this.store.threads[m.conversationId]) this.store.threads[m.conversationId] = [];
+                this.store.threads[m.conversationId].push({ id: m.id, direction: m.direction, text: m.text, time: m.time, status: m.status });
+            });
+
+            console.log('Loaded data from DB: ', this.store.contacts.length, Object.keys(this.store.conversations).length, Object.keys(this.store.threads).length);
+        } catch (e) {
+            console.log('LoadFromDB error', e.message || e);
+        }
     }
 
 }
