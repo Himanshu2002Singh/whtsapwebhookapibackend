@@ -34,8 +34,13 @@ class WhatsAppService {
 
         } catch (err) {
 
-
-            console.log(err.response?.data || err.message);
+            const resp = err.response?.data || err.message;
+            console.log(resp);
+            // If Graph API returned OAuthException (code 190), give clearer guidance
+            if (err.response?.data?.error?.code === 190) {
+                console.error('Graph API Authentication Error (code 190). ACCESS_TOKEN may be invalid or expired.');
+                console.error('Ensure ACCESS_TOKEN in whtsappwebhook/.env is valid and has required permissions.');
+            }
             // Rethrow so callers can handle failures
             throw err;
         }
