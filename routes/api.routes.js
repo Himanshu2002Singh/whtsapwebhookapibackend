@@ -129,6 +129,28 @@ router.post('/contacts', requireAppToken, (req, res) => {
     }
 });
 
+router.post('/send-template', requireAppToken, async (req, res) => {
+    const { recipients, templateName, language, variables = [] } = req.body || {};
+    const phones = Array.isArray(recipients) ? [...new Set(recipients.map((phone) => String(phone).replace(/[^0-9]/g, '')).filter(Boolean))] : [];
+    if (!templateName || !phones.length) {
+        return res.status(400).json({ success: false, message: 'templateName and at least one recipient are required' });
+    }
+
+    const results = await Promise.allSettled(phones.map(async (to) => {
+        const result = await whatsappService.sendTemplateMessage(to, templateName, language || 'en_US', variables);
+        messageService.recordOutgoing(to, `[Template] ${templateName}`, 'sent');
+        return { to, result };
+    }));
+    const sent = results.filter((result) => result.status === 'fulfilled');
+    const failed = results.flatMap((result, index) => result.status === 'rejected'
+        ? [{ to: phones[index], error: result.reason?.response?.data || result.reason?.message || 'Failed' }]
+        : []);
+    return res.status(failed.length ? 207 : 200).json({
+        success: failed.length === 0,
+        data: { total: phones.length, sent: sent.length, failed },
+    });
+});
+
 const collectionKeys = new Set(['templates', 'broadcasts', 'automations', 'team']);
 
 function requireCollection(req, res, next) {

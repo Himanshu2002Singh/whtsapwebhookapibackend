@@ -42,6 +42,24 @@ class WhatsAppService {
 
     }
 
+    async sendTemplateMessage(to, templateName, language = 'en_US', values = []) {
+        try {
+            const parameters = values.map((value) => ({ type: 'text', text: String(value) }));
+            const components = parameters.length ? [{ type: 'body', parameters }] : [];
+            const response = await axios.post(`/${PHONE_NUMBER_ID}/messages`, {
+                messaging_product: 'whatsapp',
+                recipient_type: 'individual',
+                to,
+                type: 'template',
+                template: { name: templateName, language: { code: language }, components },
+            });
+            return response.data;
+        } catch (err) {
+            console.log(err.response?.data || err.message);
+            throw err;
+        }
+    }
+
     async markAsRead(messageId) {
 
         try {
