@@ -53,53 +53,46 @@ exports.receiveWebhook = async (req, res) => {
 
         }
 
-        const entry = body.entry?.[0];
+        const entries = Array.isArray(body.entry) ? body.entry : [];
+        for (const entry of entries) {
+            const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+            for (const change of changes) {
+                const value = change?.value;
+                if (!value) continue;
 
-        const change = entry?.changes?.[0];
+                const contacts = Array.isArray(value.contacts) ? value.contacts : [];
+                const messages = Array.isArray(value.messages) ? value.messages : [];
+                const statuses = Array.isArray(value.statuses) ? value.statuses : [];
 
-        const value = change?.value;
+                if (messages.length) {
+                    const contact = contacts[0];
 
-        if (!value) {
+                    for (const message of messages) {
+                        const customerName = contact?.profile?.name || "";
+                        const customerNumber = message?.from || contact?.wa_id || "";
 
-            return res.sendStatus(200);
+                        console.log("Customer Name :", customerName);
+                        console.log("Customer Number :", customerNumber);
+                        console.log("Message Type :", message.type);
+                        console.log("Message ID :", message.id);
+                        console.log("Timestamp :", message.timestamp);
 
+                        await messageService.handleIncomingMessage(
+                            customerName,
+                            customerNumber,
+                            message
+                        );
+                    }
+                }
+
+                if (statuses.length) {
+                    for (const status of statuses) {
+                        console.log("Status Update :", status.status, status.id);
+                        await messageService.handleMessageStatusUpdate(status);
+                    }
+                }
+            }
         }
-
-        const contacts = value.contacts || [];
-
-        const messages = value.messages || [];
-
-        if (!messages.length) {
-
-            console.log("No Incoming Messages");
-
-            return res.sendStatus(200);
-
-        }
-
-        const contact = contacts[0];
-
-        const customerName = contact?.profile?.name || "";
-
-        const customerNumber = contact?.wa_id || "";
-
-        const message = messages[0];
-
-        console.log("Customer Name :", customerName);
-
-        console.log("Customer Number :", customerNumber);
-
-        console.log("Message Type :", message.type);
-
-        console.log("Message ID :", message.id);
-
-        console.log("Timestamp :", message.timestamp);
-
-        await messageService.handleIncomingMessage(
-            customerName,
-            customerNumber,
-            message
-        );
 
         return res.sendStatus(200);
 

@@ -22,12 +22,14 @@ function requireAppToken(req, res, next) {
 router.post('/send-text', requireAppToken, async (req, res) => {
     try {
         const { to, message } = req.body;
-        if (!to || !message) return res.status(400).json({ success: false, message: 'to and message are required' });
-        const result = await whatsappService.sendTextMessage(to, message);
+        const phone = messageService.normalizePhone(to);
+        if (!phone || !message) return res.status(400).json({ success: false, message: 'to and message are required' });
+        const result = await whatsappService.sendTextMessage(phone, message);
 
         // record outgoing in store so UI can fetch threads
         try {
-            messageService.recordOutgoing(to, message, 'sent');
+            const messageId = result?.messages?.[0]?.id;
+            await messageService.recordOutgoing(phone, message, 'sent', { messageId });
         } catch (e) {
             console.log('recordOutgoing error', e);
         }
@@ -85,7 +87,7 @@ router.get('/conversations', requireAppToken, (req, res) => {
 // Thread for a conversation (id = phone number)
 router.get('/threads/:id', requireAppToken, (req, res) => {
     try {
-        const id = req.params.id;
+        const id = messageService.normalizePhone(req.params.id);
         const thread = messageService.getThread(id);
         return res.json({ success: true, data: thread });
     } catch (err) {
@@ -96,17 +98,9 @@ router.get('/threads/:id', requireAppToken, (req, res) => {
 // Contacts - derived from conversations store
 router.get('/contacts', requireAppToken, (req, res) => {
     try {
-        const convs = messageService.getConversations();
-        const contacts = convs.map((c) => ({
-            id: c.id,
-            name: c.contactName || c.phone,
-            phone: c.phone,
-            avatarColor: c.avatarColor || 'bg-brand-500',
-            tags: c.tags || [],
-            optIn: true,
-            lastSeen: c.time || '',
-            createdAt: '',
-            owner: c.assignee || '',
+        const contacts = messageService.getContacts().map((c) => ({
+            ...c,
+            tags: Array.isArray(c.tags) ? c.tags : [],
         }));
 
         return res.json({ success: true, data: contacts });
@@ -116,12 +110,12 @@ router.get('/contacts', requireAppToken, (req, res) => {
 });
 
 // Create contact
-router.post('/contacts', requireAppToken, (req, res) => {
+router.post('/contacts', requireAppToken, async (req, res) => {
     try {
         const { name, phone, tags, owner, optIn } = req.body;
         if (!phone) return res.status(400).json({ success: false, message: 'phone is required' });
 
-        const contact = messageService.addContact({ name, phone, tags, owner, optIn });
+        const contact = await messageService.addContact({ name, phone, tags, owner, optIn });
 
         return res.status(201).json({ success: true, data: contact });
     } catch (err) {
@@ -131,14 +125,15 @@ router.post('/contacts', requireAppToken, (req, res) => {
 
 router.post('/send-template', requireAppToken, async (req, res) => {
     const { recipients, templateName, language, variables = [] } = req.body || {};
-    const phones = Array.isArray(recipients) ? [...new Set(recipients.map((phone) => String(phone).replace(/[^0-9]/g, '')).filter(Boolean))] : [];
+    const phones = Array.isArray(recipients) ? [...new Set(recipients.map((phone) => messageService.normalizePhone(phone)).filter(Boolean))] : [];
     if (!templateName || !phones.length) {
         return res.status(400).json({ success: false, message: 'templateName and at least one recipient are required' });
     }
 
     const results = await Promise.allSettled(phones.map(async (to) => {
         const result = await whatsappService.sendTemplateMessage(to, templateName, language || 'en_US', variables);
-        messageService.recordOutgoing(to, `[Template] ${templateName}`, 'sent');
+        const messageId = result?.messages?.[0]?.id;
+        await messageService.recordOutgoing(to, `[Template] ${templateName}`, 'sent', { messageId });
         return { to, result };
     }));
     const sent = results.filter((result) => result.status === 'fulfilled');
