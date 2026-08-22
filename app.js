@@ -4,6 +4,7 @@ const morgan = require("morgan");
 
 const webhookRoutes = require("./routes/webhook.routes");
 const apiRoutes = require("./routes/api.routes");
+const settingsRoutes = require("./routes/settings.routes");
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 app.use("/webhook", webhookRoutes);
+app.use("/api/settings", settingsRoutes);
 app.use("/api", apiRoutes);
 
 app.get("/", (req, res) => {

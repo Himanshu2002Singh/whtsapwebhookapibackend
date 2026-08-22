@@ -243,14 +243,6 @@ function requireCollection(req, res, next) {
     next();
 }
 
-router.get('/settings/state', requireAppToken, (req, res) => {
-    return res.json({ success: true, data: appState.getSettings() });
-});
-
-router.patch('/settings/state', requireAppToken, (req, res) => {
-    return res.json({ success: true, data: appState.updateSettings(req.body || {}) });
-});
-
 router.get('/analytics/summary', requireAppToken, (req, res) => {
     return res.json({ success: true, data: appState.analytics() });
 });
