@@ -16,7 +16,10 @@ function requireUserAuth(req, res, next) {
     if (!user) return res.status(401).json({ success: false, message: 'Login required' });
     const moduleName = getModuleName(req);
     const action = getAction(req);
-    const role = appState.list('roles').find((item) => item.id === String(user.role || '').toLowerCase());
+    if (moduleName === 'team' && /roles/.test(`${req.baseUrl || ''}${req.path || ''}`) && user.role !== 'Admin') {
+        return res.status(403).json({ success: false, message: 'Only Trusting Brains Admin can manage roles' });
+    }
+    const role = appState.list('roles').find((item) => item.id === String(user.role || '').toLowerCase() || String(item.name || '').toLowerCase() === String(user.role || '').toLowerCase());
     const permission = role?.permissions?.[moduleName] || role?.permissions?.['*'];
     if (permission && permission[action] === false) return res.status(403).json({ success: false, message: `${user.role} role cannot ${action} ${moduleName}` });
     req.user = user;

@@ -6,6 +6,7 @@ const { sequelize } = require('./models');
 const messageService = require('./services/message.service');
 const axiosClient = require('./confiq/axios');
 const teamService = require('./services/team.service');
+const roleService = require('./services/role.service');
 
 const PORT = process.env.PORT || 5000;
 
@@ -24,6 +25,7 @@ async function start() {
         // load persisted messages/contacts/conversations into memory
         await messageService.loadFromDB();
         await teamService.loadFromDB();
+        await roleService.loadFromDB();
 
         // quick ACCESS_TOKEN check with Graph API
         try {

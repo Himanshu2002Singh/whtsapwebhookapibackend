@@ -80,6 +80,7 @@ class AppStateService {
 
     list(key) { return this.state[key] || []; }
     setTeam(members) { this.state.team = members; return this.state.team; }
+    setRoles(roles) { this.state.roles = roles; return this.state.roles; }
     getSettings() { return this.state.settings; }
     getTemplateById(id) {
         return this.state.templates.find((template) => template.id === id) || null;

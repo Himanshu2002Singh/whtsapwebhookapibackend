@@ -9,6 +9,7 @@ const metaTemplates = require("../services/metaTemplates.service");
 const axiosClient = require("../confiq/axios");
 const teamService = require('../services/team.service');
 const authService = require('../services/auth.service');
+const roleService = require('../services/role.service');
 
 function isValidMetaTemplateName(name) {
     return /^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(String(name || ''));
@@ -356,6 +357,12 @@ router.post('/:collection', requireAppToken, requireCollection, async (req, res)
         return res.status(201).json({ success: true, data: safeItem });
     }
 
+    if (req.params.collection === 'roles') {
+        const item = appState.create('roles', payload);
+        await roleService.create(item);
+        return res.status(201).json({ success: true, data: item });
+    }
+
     const item = appState.create(req.params.collection, payload);
     return res.status(201).json({ success: true, data: item });
 });
@@ -393,6 +400,10 @@ router.patch('/:collection/:id', requireAppToken, requireCollection, async (req,
 
     const item = appState.update(req.params.collection, req.params.id, payload);
     if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+    if (req.params.collection === 'roles') {
+        const synced = await roleService.update(req.params.id, payload);
+        return res.json({ success: true, data: synced || item });
+    }
     return res.json({ success: true, data: item });
 });
 
