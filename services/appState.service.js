@@ -19,6 +19,21 @@ function makeId(prefix) {
     return `${prefix}${Date.now()}${Math.floor(Math.random() * 1000)}`;
 }
 
+function normalizeLanguage(language) {
+    return String(language || '').trim().replace('-', '_').toLowerCase();
+}
+
+function normalizeTemplateStatus(status) {
+    const value = String(status || '').trim().toLowerCase();
+    if (value === 'approved') return 'approved';
+    if (value === 'pending') return 'pending';
+    if (value === 'rejected') return 'rejected';
+    if (value === 'paused') return 'paused';
+    if (value === 'disabled') return 'disabled';
+    if (value === 'in_appeal') return 'in_appeal';
+    return value || 'pending';
+}
+
 class AppStateService {
     constructor() {
         this.state = {
@@ -66,6 +81,73 @@ class AppStateService {
 
     list(key) { return this.state[key] || []; }
     getSettings() { return this.state.settings; }
+    getTemplateById(id) {
+        return this.state.templates.find((template) => template.id === id) || null;
+    }
+    hydrateTemplatesFromMeta(metaTemplates = []) {
+        const metaByKey = new Map();
+        const metaByName = new Map();
+
+        for (const template of metaTemplates) {
+            const name = String(template?.name || '').trim().toLowerCase();
+            const language = normalizeLanguage(template?.language);
+            if (name) {
+                metaByName.set(name, template);
+            }
+            if (name && language) {
+                metaByKey.set(`${name}::${language}`, template);
+            }
+        }
+
+        this.state.templates = this.state.templates.map((template) => {
+            const key = `${String(template.name || '').trim().toLowerCase()}::${normalizeLanguage(template.language)}`;
+            const meta = metaByKey.get(key) || metaByName.get(String(template.name || '').trim().toLowerCase());
+            if (!meta) return template;
+
+            return {
+                ...template,
+                metaId: meta.id || template.metaId,
+                metaStatus: meta.status || template.metaStatus,
+                metaLanguage: meta.language || template.metaLanguage,
+                metaCategory: meta.category || template.metaCategory,
+                metaQualityScore: meta.quality_score || template.metaQualityScore,
+                metaPreviousCategory: meta.previous_category || template.metaPreviousCategory,
+                metaSyncedAt: new Date().toISOString(),
+                status: normalizeTemplateStatus(meta.status) || template.status,
+            };
+        });
+
+        return this.state.templates;
+    }
+    syncTemplateStatusFromMeta(payload = {}) {
+        const templateName = String(payload.templateName || payload.name || '').trim().toLowerCase();
+        const templateLanguage = normalizeLanguage(payload.templateLanguage || payload.language);
+        const templateId = String(payload.templateId || payload.id || '').trim();
+        const status = normalizeTemplateStatus(payload.status || payload.event);
+
+        let matched = null;
+        this.state.templates = this.state.templates.map((template) => {
+            const byName = templateName && String(template.name || '').trim().toLowerCase() === templateName;
+            const byLanguage = !templateLanguage || normalizeLanguage(template.language) === templateLanguage;
+            const byId = templateId && (String(template.metaId || '') === templateId || String(template.id || '') === templateId);
+
+            if ((byId || (byName && byLanguage))) {
+                matched = template;
+                return {
+                    ...template,
+                    metaId: templateId || template.metaId,
+                    metaStatus: payload.status || payload.event || template.metaStatus,
+                    metaReason: payload.reason || template.metaReason,
+                    metaSyncedAt: new Date().toISOString(),
+                    status: status || template.status,
+                };
+            }
+
+            return template;
+        });
+
+        return matched;
+    }
     updateSettings(patch) {
         this.state.settings = {
             ...this.state.settings,

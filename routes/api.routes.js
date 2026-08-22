@@ -5,7 +5,12 @@ const router = express.Router();
 const whatsappService = require("../services/whatsapp.service");
 const messageService = require("../services/message.service");
 const appState = require("../services/appState.service");
+const metaTemplates = require("../services/metaTemplates.service");
 const axiosClient = require("../confiq/axios");
+
+function isValidMetaTemplateName(name) {
+    return /^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(String(name || ''));
+}
 
 // Simple app-token check. Frontend should send header 'x-app-token'.
 function requireAppToken(req, res, next) {
@@ -27,14 +32,15 @@ router.post('/send-text', requireAppToken, async (req, res) => {
         const result = await whatsappService.sendTextMessage(phone, message);
 
         // record outgoing in store so UI can fetch threads
+        let recordedMessage = null;
         try {
             const messageId = result?.messages?.[0]?.id;
-            await messageService.recordOutgoing(phone, message, 'sent', { messageId });
+            recordedMessage = await messageService.recordOutgoing(phone, message, 'sent', { messageId });
         } catch (e) {
             console.log('recordOutgoing error', e);
         }
 
-        return res.json({ success: true, data: result });
+        return res.json({ success: true, data: { apiResult: result, message: recordedMessage } });
     } catch (err) {
         console.log('API send-text error:', err.response?.data || err.message || err);
         const details = err.response?.data || err.message || 'Server error';
@@ -133,8 +139,8 @@ router.post('/send-template', requireAppToken, async (req, res) => {
     const results = await Promise.allSettled(phones.map(async (to) => {
         const result = await whatsappService.sendTemplateMessage(to, templateName, language || 'en_US', variables);
         const messageId = result?.messages?.[0]?.id;
-        await messageService.recordOutgoing(to, `[Template] ${templateName}`, 'sent', { messageId });
-        return { to, result };
+        const recordedMessage = await messageService.recordOutgoing(to, `[Template] ${templateName}`, 'sent', { messageId });
+        return { to, result, message: recordedMessage };
     }));
     const sent = results.filter((result) => result.status === 'fulfilled');
     const failed = results.flatMap((result, index) => result.status === 'rejected'
@@ -167,17 +173,105 @@ router.get('/analytics/summary', requireAppToken, (req, res) => {
     return res.json({ success: true, data: appState.analytics() });
 });
 
-router.get('/:collection', requireAppToken, requireCollection, (req, res) => {
+router.get('/:collection', requireAppToken, requireCollection, async (req, res) => {
+    if (req.params.collection === 'templates' && metaTemplates.isConfigured()) {
+        try {
+            const metaList = await metaTemplates.listTemplates();
+            const merged = appState.hydrateTemplatesFromMeta(metaList);
+            return res.json({ success: true, data: merged });
+        } catch (err) {
+            console.log('Meta template sync failed:', err.response?.data || err.message || err);
+        }
+    }
+
     return res.json({ success: true, data: appState.list(req.params.collection) });
 });
 
-router.post('/:collection', requireAppToken, requireCollection, (req, res) => {
-    const item = appState.create(req.params.collection, req.body || {});
+router.post('/:collection', requireAppToken, requireCollection, async (req, res) => {
+    const payload = req.body || {};
+
+    if (req.params.collection === 'templates') {
+        const name = String(payload.name || '').trim();
+        if (!isValidMetaTemplateName(name)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Template name must use lowercase letters, numbers, and underscores only (example: welcome_message)',
+            });
+        }
+        if (!metaTemplates.isConfigured()) {
+            return res.status(503).json({
+                success: false,
+                message: 'Meta template sync is not configured. Add ACCESS_TOKEN and WABA_ID to the backend environment.',
+            });
+        }
+
+        const draft = { ...payload, name, status: 'pending' };
+        try {
+            const metaResult = await metaTemplates.createTemplate(draft);
+            let metaTemplate = null;
+            try {
+                metaTemplate = await metaTemplates.getTemplateByName(name);
+            } catch (lookupError) {
+                console.log('Meta template lookup after create failed:', lookupError.response?.data || lookupError.message || lookupError);
+            }
+
+            const responseItem = appState.create('templates', {
+                ...draft,
+                metaId: metaResult?.id || metaTemplate?.id,
+                metaStatus: metaTemplate?.status || metaResult?.status || 'PENDING',
+                metaLanguage: metaTemplate?.language || draft.language,
+                metaCategory: metaTemplate?.category || draft.category,
+                metaSyncedAt: new Date().toISOString(),
+                status: metaTemplates.normalizeTemplateStatus(metaTemplate?.status || metaResult?.status || 'pending'),
+            });
+            return res.status(201).json({ success: true, data: responseItem });
+        } catch (err) {
+            const details = err.response?.data || err.message || 'Unknown Meta API error';
+            console.log('Meta template create failed:', details);
+            return res.status(502).json({
+                success: false,
+                message: 'Meta par template create nahi ho saka',
+                details,
+            });
+        }
+    }
+
+    const item = appState.create(req.params.collection, payload);
     return res.status(201).json({ success: true, data: item });
 });
 
-router.patch('/:collection/:id', requireAppToken, requireCollection, (req, res) => {
-    const item = appState.update(req.params.collection, req.params.id, req.body || {});
+router.patch('/:collection/:id', requireAppToken, requireCollection, async (req, res) => {
+    const payload = req.body || {};
+
+    if (req.params.collection === 'templates') {
+        const current = appState.getTemplateById(req.params.id);
+        if (!current) return res.status(404).json({ success: false, message: 'Item not found' });
+
+        const item = appState.update('templates', req.params.id, { ...payload, status: payload.status || current.status || 'pending' });
+        if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
+
+        if (metaTemplates.isConfigured() && (item.metaId || current.metaId)) {
+            try {
+                const metaResult = await metaTemplates.updateTemplate(item.metaId || current.metaId, item);
+                const metaTemplate = await metaTemplates.getTemplateByName(item.name);
+                const synced = appState.update('templates', req.params.id, {
+                    metaId: metaResult?.id || metaTemplate?.id || item.metaId || current.metaId,
+                    metaStatus: metaTemplate?.status || metaResult?.status || item.metaStatus,
+                    metaLanguage: metaTemplate?.language || item.language,
+                    metaCategory: metaTemplate?.category || item.category,
+                    metaSyncedAt: new Date().toISOString(),
+                    status: metaTemplates.normalizeTemplateStatus(metaTemplate?.status || metaResult?.status || item.status),
+                });
+                return res.json({ success: true, data: synced || item });
+            } catch (err) {
+                console.log('Meta template update failed:', err.response?.data || err.message || err);
+            }
+        }
+
+        return res.json({ success: true, data: item });
+    }
+
+    const item = appState.update(req.params.collection, req.params.id, payload);
     if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
     return res.json({ success: true, data: item });
 });
@@ -188,7 +282,24 @@ router.post('/:collection/:id/duplicate', requireAppToken, requireCollection, (r
     return res.status(201).json({ success: true, data: item });
 });
 
-router.delete('/:collection/:id', requireAppToken, requireCollection, (req, res) => {
+router.delete('/:collection/:id', requireAppToken, requireCollection, async (req, res) => {
+    if (req.params.collection === 'templates') {
+        const current = appState.getTemplateById(req.params.id);
+        if (!current) return res.status(404).json({ success: false, message: 'Item not found' });
+
+        if (metaTemplates.isConfigured() && (current.metaId || current.name)) {
+            try {
+                if (current.metaId) {
+                    await metaTemplates.deleteTemplateById(current.metaId);
+                } else {
+                    await metaTemplates.deleteTemplateByName(current.name);
+                }
+            } catch (err) {
+                console.log('Meta template delete failed:', err.response?.data || err.message || err);
+            }
+        }
+    }
+
     const removed = appState.remove(req.params.collection, req.params.id);
     if (!removed) return res.status(404).json({ success: false, message: 'Item not found' });
     return res.json({ success: true });

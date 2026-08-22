@@ -1,4 +1,5 @@
 const messageService = require("../services/message.service");
+const appState = require("../services/appState.service");
 
 exports.verifyWebhook = async (req, res) => {
     try {
@@ -90,6 +91,22 @@ exports.receiveWebhook = async (req, res) => {
                         console.log("Status Update :", status.status, status.id);
                         await messageService.handleMessageStatusUpdate(status);
                     }
+                }
+
+                if (change.field === 'message_template_status_update') {
+                    const templateStatus = value?.event || value?.status || value?.template_status;
+                    const templateName = value?.message_template_name || value?.name;
+                    const templateId = value?.message_template_id || value?.id;
+                    const templateLanguage = value?.message_template_language || value?.language;
+
+                    console.log("Template Status Update :", templateStatus, templateName, templateId);
+                    appState.syncTemplateStatusFromMeta({
+                        status: templateStatus,
+                        templateName,
+                        templateId,
+                        templateLanguage,
+                        reason: value?.reason || null,
+                    });
                 }
             }
         }
