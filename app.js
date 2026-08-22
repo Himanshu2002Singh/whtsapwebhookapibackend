@@ -14,7 +14,8 @@ app.set('trust proxy', true);
 const allowedOrigin = process.env.WEBHOOK_URL || '*';
 app.use(cors({ origin: allowedOrigin }));
 
-app.use(express.json({ limit: '30mb' }));
+// Media is sent as base64 JSON; allow headroom for WhatsApp's 100 MB document limit.
+app.use(express.json({ limit: '140mb' }));
 
 app.use(express.urlencoded({ extended: true }));
 

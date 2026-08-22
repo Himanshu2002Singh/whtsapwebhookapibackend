@@ -241,6 +241,11 @@ class WhatsAppService {
             to,
             type,
             [type]: media,
+        }, {
+            headers: {
+                Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+                'Content-Type': 'application/json',
+            },
         });
         return { ...response.data, mediaId };
     }
