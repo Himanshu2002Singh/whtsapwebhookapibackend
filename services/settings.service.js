@@ -68,11 +68,19 @@ class SettingsService {
             throw new Error('PHONE_NUMBER_ID and ACCESS_TOKEN are required for Meta profile update');
         }
 
-        const payload = {};
+        const payload = { messaging_product: 'whatsapp' };
         ['about', 'address', 'description', 'email', 'vertical', 'websites'].forEach((key) => {
             if (patch[key] !== undefined) payload[key] = patch[key];
         });
-        if (!Object.keys(payload).length) throw new Error('At least one WhatsApp profile field is required');
+        if (payload.vertical) {
+            const verticalMap = {
+                Technology: 'PROFESSIONAL',
+                Retail: 'SHOPPING_RETAIL',
+                Services: 'PROFESSIONAL',
+            };
+            payload.vertical = verticalMap[payload.vertical] || String(payload.vertical).toUpperCase();
+        }
+        if (Object.keys(payload).length === 1) throw new Error('At least one WhatsApp profile field is required');
 
         await axiosClient.post(`/${phoneNumberId}/whatsapp_business_profile`, payload);
         return this.syncMetaProfile();
