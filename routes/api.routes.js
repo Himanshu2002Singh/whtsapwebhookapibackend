@@ -8,6 +8,7 @@ const appState = require("../services/appState.service");
 const metaTemplates = require("../services/metaTemplates.service");
 const axiosClient = require("../confiq/axios");
 const teamService = require('../services/team.service');
+const authService = require('../services/auth.service');
 
 function isValidMetaTemplateName(name) {
     return /^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(String(name || ''));
@@ -161,9 +162,27 @@ router.get('/check-token', requireAppToken, async (req, res) => {
 router.get('/conversations', requireAppToken, (req, res) => {
     try {
         const convs = messageService.getConversations();
-        return res.json({ success: true, data: convs });
+        const visible = req.user?.role === 'Agent'
+            ? convs.filter((conversation) => [req.user.id, req.user.email, req.user.name].includes(conversation.assignee))
+            : convs;
+        return res.json({ success: true, data: visible });
     } catch (err) {
         return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+router.patch('/conversations/:id/assignment', requireAppToken, async (req, res) => {
+    try {
+        if (!['Admin', 'Manager'].includes(req.user?.role)) {
+            return res.status(403).json({ success: false, message: 'Only Admin or Manager can assign conversations' });
+        }
+        const assignee = String(req.body?.assignee || '').trim();
+        const member = appState.list('team').find((item) => item.id === assignee || item.email === assignee || item.name === assignee);
+        if (!member) return res.status(404).json({ success: false, message: 'Team member not found' });
+        const conversation = await messageService.persistConversationSnapshot(req.params.id, { assignee: member.id });
+        return res.json({ success: true, data: conversation });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message || 'Conversation assignment failed' });
     }
 });
 
@@ -235,7 +254,7 @@ router.post('/send-template', requireAppToken, async (req, res) => {
     });
 });
 
-const collectionKeys = new Set(['templates', 'broadcasts', 'automations', 'team']);
+const collectionKeys = new Set(['templates', 'broadcasts', 'automations', 'team', 'roles']);
 
 function requireCollection(req, res, next) {
     if (!collectionKeys.has(req.params.collection)) {
@@ -267,6 +286,9 @@ router.get('/:collection', requireAppToken, requireCollection, async (req, res) 
         }
     }
 
+    if (req.params.collection === 'team') {
+        return res.json({ success: true, data: appState.list('team').map(({ passwordHash, ...member }) => member) });
+    }
     return res.json({ success: true, data: appState.list(req.params.collection) });
 });
 
@@ -323,8 +345,18 @@ router.post('/:collection', requireAppToken, requireCollection, async (req, res)
         }
     }
 
+    if (req.params.collection === 'team') {
+        if (!payload.password || String(payload.password).length < 8) {
+            return res.status(400).json({ success: false, message: 'Team member password must be at least 8 characters' });
+        }
+        const { password, ...memberPayload } = payload;
+        const item = appState.create('team', { ...memberPayload, passwordHash: authService.hashPassword(password) });
+        await teamService.create(item);
+        const { passwordHash, ...safeItem } = item;
+        return res.status(201).json({ success: true, data: safeItem });
+    }
+
     const item = appState.create(req.params.collection, payload);
-    if (req.params.collection === 'team') await teamService.create(item);
     return res.status(201).json({ success: true, data: item });
 });
 

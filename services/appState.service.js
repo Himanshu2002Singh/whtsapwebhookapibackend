@@ -37,6 +37,12 @@ function normalizeTemplateStatus(status) {
 class AppStateService {
     constructor() {
         this.state = {
+            roles: [
+                { id: 'admin', name: 'Admin', description: 'Full access', permissions: { '*': { read: true, write: true, update: true, delete: true, send: true } } },
+                { id: 'manager', name: 'Manager', description: 'Manage team and operations', permissions: { '*': { read: true, write: true, update: true, delete: false, send: true } } },
+                { id: 'agent', name: 'Agent', description: 'Assigned conversations only', permissions: { conversations: { read: true, write: true, update: true, delete: false, send: true }, contacts: { read: true, write: false, update: false, delete: false, send: false } } },
+                { id: 'viewer', name: 'Viewer', description: 'Read-only access', permissions: { '*': { read: true, write: false, update: false, delete: false, send: false } } },
+            ],
             // Templates are loaded from Meta; do not seed local/demo templates.
             templates: [],
             broadcasts: [

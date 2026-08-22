@@ -1,8 +1,8 @@
 const authService = require('../services/auth.service');
 
-exports.login = (req, res) => {
+exports.login = async (req, res) => {
     const { email, password } = req.body || {};
-    const result = authService.login(email, password);
+    const result = await authService.login(email, password);
     if (!result) return res.status(401).json({ success: false, message: 'Invalid email or password' });
     return res.json({ success: true, data: result });
 };
