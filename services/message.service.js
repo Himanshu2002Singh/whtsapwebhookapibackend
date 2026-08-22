@@ -125,18 +125,20 @@ class MessageService {
     }
 
     async persistMessage(message) {
+        const payload = { ...message, attachment: message.attachment ? JSON.stringify(message.attachment) : null };
         const existing = await Message.findByPk(message.id);
         if (existing) {
             await existing.update({
-                conversationId: message.conversationId,
-                direction: message.direction,
-                text: message.text,
-                time: message.time,
-                status: message.status,
+                conversationId: payload.conversationId,
+                direction: payload.direction,
+                text: payload.text,
+                time: payload.time,
+                status: payload.status,
+                attachment: payload.attachment,
             });
             return existing;
         }
-        return Message.create(message);
+        return Message.create(payload);
     }
 
     async ensureContact(customerName, phone, overrides = {}) {
@@ -260,6 +262,39 @@ class MessageService {
         return `[${message.type}]`;
     }
 
+    getAttachment(message) {
+        if (!message) return null;
+        if (['image', 'video', 'audio'].includes(message.type)) {
+            const media = message[message.type] || {};
+            return {
+                type: message.type,
+                mediaId: media.id || null,
+                mimeType: media.mime_type || null,
+                name: media.filename || `${message.type}.${message.type === 'image' ? 'jpg' : message.type === 'video' ? 'mp4' : 'ogg'}`,
+                caption: media.caption || '',
+            };
+        }
+        if (message.type === 'document') {
+            return {
+                type: 'document',
+                mediaId: message.document?.id || null,
+                mimeType: message.document?.mime_type || null,
+                name: message.document?.filename || 'document',
+                caption: message.document?.caption || '',
+            };
+        }
+        if (message.type === 'location') {
+            return {
+                type: 'location',
+                latitude: message.location?.latitude,
+                longitude: message.location?.longitude,
+                name: message.location?.name || '',
+                address: message.location?.address || '',
+            };
+        }
+        return null;
+    }
+
     getMessageStatusFromWebhook(message) {
         if (!message) return 'sent';
         if (message.status === 'read') return 'read';
@@ -272,10 +307,11 @@ class MessageService {
         const id = this.getConversationKey(customerNumber || message?.from);
         const text = this.buildMessageText(message);
         const time = this.formatTime(message?.timestamp);
+        const attachment = this.getAttachment(message);
 
         // add thread entry
         const mid = message.id || `in-${Date.now()}`;
-        this.upsertThreadMessage(id, { id: mid, direction: 'in', text, time });
+        this.upsertThreadMessage(id, { id: mid, direction: 'in', text, time, attachment });
 
         // update conversation summary
         const contact = await this.ensureContact(customerName, id, {
@@ -307,7 +343,8 @@ class MessageService {
                 direction: 'in',
                 text,
                 time,
-                status: 'received'
+                status: 'received',
+                attachment,
             });
         } catch (e) {
             console.log('Persist incoming error', e.message || e);
@@ -319,7 +356,7 @@ class MessageService {
         const id = this.getConversationKey(to);
         const time = this.formatTime(options.timestamp);
         const messageId = options.messageId || `out-${Date.now()}`;
-        this.upsertThreadMessage(id, { id: messageId, direction: 'out', text, time, status });
+        this.upsertThreadMessage(id, { id: messageId, direction: 'out', text, time, status, attachment: options.attachment || null });
 
         // update conversation preview/time
         const contact = await this.ensureContact(options.contactName || id, id, {
@@ -349,7 +386,8 @@ class MessageService {
                 direction: 'out',
                 text,
                 time,
-                status: status || 'sent'
+                status: status || 'sent',
+                attachment: options.attachment || null,
             });
         } catch (e) {
             console.log('Persist outgoing error', e.message || e);
@@ -362,6 +400,7 @@ class MessageService {
             text,
             time,
             status: status || 'sent',
+            attachment: options.attachment || null,
         };
     }
 
@@ -770,7 +809,9 @@ Reply with course name.`
             this.store.threads = {};
             msgs.forEach(m => {
                 if (!this.store.threads[m.conversationId]) this.store.threads[m.conversationId] = [];
-                this.store.threads[m.conversationId].push({ id: m.id, direction: m.direction, text: m.text, time: m.time, status: m.status });
+                let attachment = null;
+                try { attachment = m.attachment ? JSON.parse(m.attachment) : null; } catch (e) { attachment = null; }
+                this.store.threads[m.conversationId].push({ id: m.id, direction: m.direction, text: m.text, time: m.time, status: m.status, attachment });
             });
 
             console.log('Loaded data from DB: ', this.store.contacts.length, Object.keys(this.store.conversations).length, Object.keys(this.store.threads).length);

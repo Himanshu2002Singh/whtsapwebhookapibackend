@@ -11,6 +11,13 @@ const PORT = process.env.PORT || 5000;
 async function start() {
     try {
         await sequelize.sync();
+        try {
+            await sequelize.query('ALTER TABLE messages ADD COLUMN attachment TEXT NULL');
+        } catch (migrationError) {
+            if (!/duplicate column|already exists/i.test(migrationError.message || '')) {
+                console.error('Attachment column migration failed:', migrationError.message || migrationError);
+            }
+        }
         console.log('Database synced');
 
         // load persisted messages/contacts/conversations into memory

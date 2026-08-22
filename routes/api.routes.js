@@ -50,6 +50,69 @@ router.post('/send-text', requireAppToken, async (req, res) => {
     }
 });
 
+router.post('/send-media', requireAppToken, async (req, res) => {
+    try {
+        const { to, type, data, mimeType, filename, caption = '' } = req.body || {};
+        const allowedTypes = new Set(['image', 'video', 'audio', 'document']);
+        const phone = messageService.normalizePhone(to);
+        if (!phone || !allowedTypes.has(type) || !data || !mimeType || !filename) {
+            return res.status(400).json({ success: false, message: 'to, type, data, mimeType and filename are required' });
+        }
+
+        const base64 = String(data).replace(/^data:[^;]+;base64,/, '');
+        const buffer = Buffer.from(base64, 'base64');
+        if (!buffer.length || buffer.length > 20 * 1024 * 1024) {
+            return res.status(400).json({ success: false, message: 'Media must be between 1 byte and 20 MB' });
+        }
+
+        const result = await whatsappService.sendMedia(phone, type, buffer, mimeType, filename, caption);
+        const messageId = result?.messages?.[0]?.id;
+        const label = `[${type}] ${filename}`;
+        const message = await messageService.recordOutgoing(phone, label, 'sent', {
+            messageId,
+            attachment: { type, mediaId: result?.mediaId, mimeType, name: filename, caption },
+        });
+        return res.json({ success: true, data: { apiResult: result, message } });
+    } catch (err) {
+        console.log('API send-media error:', err.response?.data || err.message || err);
+        return res.status(err.response?.status || 500).json({
+            success: false,
+            message: 'WhatsApp media API error',
+            details: err.response?.data || err.message || 'Server error',
+        });
+    }
+});
+
+router.get('/media/:id', requireAppToken, async (req, res) => {
+    try {
+        const mediaInfo = await axiosClient.get(`/${encodeURIComponent(req.params.id)}`);
+        if (!mediaInfo.data?.url) return res.status(404).json({ success: false, message: 'Media URL not found' });
+        const media = await axiosClient.get(mediaInfo.data.url, { responseType: 'arraybuffer' });
+        res.set('Content-Type', media.headers['content-type'] || 'application/octet-stream');
+        res.set('Content-Disposition', 'inline');
+        return res.send(Buffer.from(media.data));
+    } catch (err) {
+        return res.status(err.response?.status || 502).json({ success: false, message: 'Media download failed', details: err.response?.data || err.message });
+    }
+});
+
+router.post('/send-location', requireAppToken, async (req, res) => {
+    try {
+        const { to, latitude, longitude, name = '', address = '' } = req.body || {};
+        const phone = messageService.normalizePhone(to);
+        if (!phone || !Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
+            return res.status(400).json({ success: false, message: 'to, latitude and longitude are required' });
+        }
+        const result = await whatsappService.sendLocation(phone, Number(latitude), Number(longitude), name, address);
+        const messageId = result?.messages?.[0]?.id;
+        const attachment = { type: 'location', latitude: Number(latitude), longitude: Number(longitude), name, address };
+        const message = await messageService.recordOutgoing(phone, '[location]', 'sent', { messageId, attachment });
+        return res.json({ success: true, data: { apiResult: result, message } });
+    } catch (err) {
+        return res.status(err.response?.status || 500).json({ success: false, message: 'WhatsApp location API error', details: err.response?.data || err.message });
+    }
+});
+
 module.exports = router;
 
 // Debug endpoint to check env values (masked)

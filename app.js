@@ -14,7 +14,7 @@ app.set('trust proxy', true);
 const allowedOrigin = process.env.WEBHOOK_URL || '*';
 app.use(cors({ origin: allowedOrigin }));
 
-app.use(express.json());
+app.use(express.json({ limit: '30mb' }));
 
 app.use(express.urlencoded({ extended: true }));
 

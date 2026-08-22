@@ -1,4 +1,5 @@
 const axios = require("../confiq/axios");
+const FormData = require('form-data');
 
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
@@ -211,6 +212,48 @@ class WhatsAppService {
 
         }
 
+    }
+
+    async sendMedia(to, type, buffer, mimeType, filename, caption = '') {
+        const form = new FormData();
+        form.append('messaging_product', 'whatsapp');
+        form.append('file', buffer, { filename, contentType: mimeType });
+
+        const upload = await axios.post(`/${PHONE_NUMBER_ID}/media`, form, {
+            headers: {
+                ...form.getHeaders(),
+                Authorization: `Bearer ${process.env.ACCESS_TOKEN}`,
+            },
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity,
+        });
+
+        const mediaId = upload.data?.id;
+        if (!mediaId) throw new Error('Meta media upload did not return a media id');
+
+        const media = { id: mediaId };
+        if (caption && ['image', 'video', 'document'].includes(type)) media.caption = caption;
+        if (type === 'document' && filename) media.filename = filename;
+
+        const response = await axios.post(`/${PHONE_NUMBER_ID}/messages`, {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type,
+            [type]: media,
+        });
+        return { ...response.data, mediaId };
+    }
+
+    async sendLocation(to, latitude, longitude, name = '', address = '') {
+        const response = await axios.post(`/${PHONE_NUMBER_ID}/messages`, {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to,
+            type: 'location',
+            location: { latitude, longitude, name, address },
+        });
+        return response.data;
     }
 
 }
