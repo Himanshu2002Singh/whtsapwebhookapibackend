@@ -55,7 +55,7 @@ class AppStateService {
                 { id: 'a6', name: 'Welcome new signup', trigger: 'New opt-in contact', action: 'Send "Welcome Message" template', status: 'active', runs: 980, lastRun: '3 min ago' },
             ],
             team: [
-                { id: 'u1', name: 'Priya Menon', email: 'priya@wapcrm.io', role: 'Admin', avatarColor: colors[0], status: 'online', assignedChats: 14, resolvedToday: 22 },
+                { id: 'u1', name: 'Trusting Brains Admin', email: 'admin@trustingbrains.com', role: 'Admin', avatarColor: colors[0], status: 'online', assignedChats: 0, resolvedToday: 0 },
                 { id: 'u2', name: 'Rahul Singh', email: 'rahul@wapcrm.io', role: 'Manager', avatarColor: colors[1], status: 'online', assignedChats: 9, resolvedToday: 18 },
                 { id: 'u3', name: 'Karan Desai', email: 'karan@wapcrm.io', role: 'Agent', avatarColor: colors[2], status: 'away', assignedChats: 11, resolvedToday: 15 },
                 { id: 'u4', name: 'Neha Gupta', email: 'neha@wapcrm.io', role: 'Agent', avatarColor: colors[3], status: 'online', assignedChats: 7, resolvedToday: 12 },
@@ -63,7 +63,7 @@ class AppStateService {
                 { id: 'u6', name: 'Aisha Khan', email: 'aisha@wapcrm.io', role: 'Viewer', avatarColor: colors[5], status: 'offline', assignedChats: 0, resolvedToday: 0 },
             ],
             settings: {
-                profile: { fullName: 'Priya Menon', email: 'priya@wapcrm.io', phone: '+91 98765 43210', role: 'Admin' },
+                profile: { fullName: 'Trusting Brains Admin', email: 'admin@trustingbrains.com', phone: '+91 98765 43210', role: 'Admin' },
                 whatsapp: { number: '+91 98765 43210', displayName: 'WapCRM Support', businessCategory: 'Technology', about: 'We typically reply within minutes', qualityRating: 'High' },
                 toggles: { emailNotif: true, pushNotif: true, soundNotif: false, dailyDigest: true, twoFa: true, sessionTimeout: true, autoAssign: true, awayMessage: true },
                 webhook: { url: '', events: ['message.received', 'message.sent', 'message.delivered', 'message.read', 'contact.created', 'conversation.resolved'] },
@@ -73,6 +73,7 @@ class AppStateService {
     }
 
     list(key) { return this.state[key] || []; }
+    setTeam(members) { this.state.team = members; return this.state.team; }
     getSettings() { return this.state.settings; }
     getTemplateById(id) {
         return this.state.templates.find((template) => template.id === id) || null;

@@ -7,6 +7,7 @@ const messageService = require("../services/message.service");
 const appState = require("../services/appState.service");
 const metaTemplates = require("../services/metaTemplates.service");
 const axiosClient = require("../confiq/axios");
+const teamService = require('../services/team.service');
 
 function isValidMetaTemplateName(name) {
     return /^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(String(name || ''));
@@ -272,6 +273,10 @@ router.get('/:collection', requireAppToken, requireCollection, async (req, res) 
 router.post('/:collection', requireAppToken, requireCollection, async (req, res) => {
     const payload = req.body || {};
 
+    if (req.params.collection === 'team' && payload.role === 'Admin' && appState.list('team').some((member) => member.role === 'Admin')) {
+        return res.status(409).json({ success: false, message: 'Only one Admin is allowed. Trusting Brains Admin already has full access.' });
+    }
+
     if (req.params.collection === 'templates') {
         const name = String(payload.name || '').trim();
         if (!isValidMetaTemplateName(name)) {
@@ -319,6 +324,7 @@ router.post('/:collection', requireAppToken, requireCollection, async (req, res)
     }
 
     const item = appState.create(req.params.collection, payload);
+    if (req.params.collection === 'team') await teamService.create(item);
     return res.status(201).json({ success: true, data: item });
 });
 

@@ -5,6 +5,8 @@ const morgan = require("morgan");
 const webhookRoutes = require("./routes/webhook.routes");
 const apiRoutes = require("./routes/api.routes");
 const settingsRoutes = require("./routes/settings.routes");
+const authRoutes = require("./routes/auth.routes");
+const { requireUserAuth } = require('./middleware/auth.middleware');
 
 const app = express();
 
@@ -23,6 +25,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
 app.use("/webhook", webhookRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api", requireUserAuth);
 app.use("/api/settings", settingsRoutes);
 app.use("/api", apiRoutes);
 

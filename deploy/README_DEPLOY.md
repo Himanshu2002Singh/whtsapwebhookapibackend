@@ -2,6 +2,16 @@ Deployment steps for `whatsappwebhook` (quick)
 
 1. Copy `.env.production` to `.env` on the server and fill secrets.
 
+   Also configure the Trusting Brains admin login:
+
+   ```env
+   ADMIN_NAME=Trusting Brains Admin
+   ADMIN_EMAIL=admin@trustingbrains.com
+   ADMIN_PASSWORD=use-a-long-random-password
+   ```
+
+   The Admin account has full access. Team members are added from the CRM Team page with Manager, Agent, or Viewer roles.
+
 2. Install dependencies and start with pm2:
 
 ```bash
