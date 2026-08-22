@@ -12,6 +12,12 @@ function normalizeLanguage(language) {
     return String(language || '').trim().replace('-', '_').toLowerCase();
 }
 
+function toMetaLanguage(language) {
+    const value = String(language || '').trim().replace('-', '_');
+    const [locale, region] = value.split('_');
+    return region ? `${locale.toLowerCase()}_${region.toUpperCase()}` : locale.toLowerCase();
+}
+
 function normalizeTemplateStatus(status) {
     const value = String(status || '').trim().toLowerCase();
     if (value === 'approved') return 'approved';
@@ -40,7 +46,7 @@ function buildBodyComponents(body) {
 function buildTemplatePayload(template) {
     return {
         name: template.name,
-        language: normalizeLanguage(template.language) || 'en_us',
+        language: toMetaLanguage(template.language) || 'en_US',
         category: String(template.category || 'utility').toUpperCase(),
         components: buildBodyComponents(template.body),
     };

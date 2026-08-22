@@ -592,12 +592,8 @@ Reply with course name.`
             return;
         }
 
-            const response = await whatsappService.sendTextMessage(
-                customerNumber,
-                `Hello ${customerName}\n\nYou sent:\n\n${text}`
-            );
-
-            try { await this.recordOutgoing(customerNumber, `Hello ${customerName}\n\nYou sent:\n\n${text}`, 'sent', { messageId: response?.messages?.[0]?.id, contactName: customerName }); } catch(e) { console.log('recordOutgoing err', e); }
+            // Store ordinary incoming messages without sending an automatic echo reply.
+            console.log('No automatic reply configured for:', text);
 
     }
 
