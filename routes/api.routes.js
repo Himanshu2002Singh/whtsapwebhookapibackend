@@ -135,6 +135,12 @@ router.post('/send-template', requireAppToken, async (req, res) => {
     if (!templateName || !phones.length) {
         return res.status(400).json({ success: false, message: 'templateName and at least one recipient are required' });
     }
+    if (/^hello_world(?:_|$)/i.test(String(templateName).trim())) {
+        return res.status(400).json({
+            success: false,
+            message: 'hello_world is a Meta Public Test Number template. Create and use an approved template from your own WABA for this phone number.',
+        });
+    }
 
     const results = await Promise.allSettled(phones.map(async (to) => {
         const result = await whatsappService.sendTemplateMessage(to, templateName, language || 'en_US', variables);

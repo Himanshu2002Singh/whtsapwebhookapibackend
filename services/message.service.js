@@ -29,17 +29,18 @@ class MessageService {
     }
 
     formatTime(timestamp) {
+        const timeZone = process.env.APP_TIMEZONE || 'Asia/Kolkata';
         if (!timestamp) {
-            return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone });
         }
 
         const ts = Number(timestamp);
         if (Number.isFinite(ts)) {
             const date = ts > 1e12 ? new Date(ts) : new Date(ts * 1000);
-            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone });
         }
 
-        return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        return new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone });
     }
 
     getConversationKey(phone) {
