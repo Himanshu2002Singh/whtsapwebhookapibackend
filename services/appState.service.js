@@ -37,15 +37,8 @@ function normalizeTemplateStatus(status) {
 class AppStateService {
     constructor() {
         this.state = {
-            templates: [
-                { id: 't1', name: 'Welcome Message', category: 'utility', language: 'en_US', body: 'Hi {{1}}, welcome to WapCRM! We are excited to have you on board. Reply with any questions.', status: 'approved', createdAt: '2025-07-01', variables: 1 },
-                { id: 't2', name: 'Order Confirmation', category: 'utility', language: 'en_US', body: 'Your order {{1}} has been confirmed. Expected delivery: {{2}}. Track it anytime in the app.', status: 'approved', createdAt: '2025-06-20', variables: 2 },
-                { id: 't3', name: 'Flash Sale Alert', category: 'marketing', language: 'en_US', body: 'Hi {{1}}! Flash sale: 40% off everything for the next 24 hours. Shop now before it is gone!', status: 'approved', createdAt: '2025-08-05', variables: 1 },
-                { id: 't4', name: 'Appointment Reminder', category: 'utility', language: 'en_US', body: 'Reminder: You have an appointment with {{1}} on {{2}} at {{3}}. Reply 1 to confirm or 2 to reschedule.', status: 'pending', createdAt: '2025-08-11', variables: 3 },
-                { id: 't5', name: 'OTP Verification', category: 'authentication', language: 'en_US', body: 'Your verification code is {{1}}. It expires in 10 minutes. Do not share this code with anyone.', status: 'approved', createdAt: '2025-05-10', variables: 1 },
-                { id: 't6', name: 'Feedback Request', category: 'marketing', language: 'en_US', body: 'Hi {{1}}, how was your recent experience with us? Rate it 1-5 and let us know how we can improve.', status: 'rejected', createdAt: '2025-07-22', variables: 1 },
-                { id: 't7', name: 'Abandoned Cart', category: 'marketing', language: 'en_US', body: 'Hi {{1}}, you left {{2}} in your cart. Complete your order now and get free shipping!', status: 'pending', createdAt: '2025-08-12', variables: 2 },
-            ],
+            // Templates are loaded from Meta; do not seed local/demo templates.
+            templates: [],
             broadcasts: [
                 { id: 'b1', name: 'Diwali Mega Sale', template: 'Flash Sale Alert', audience: 'All VIP Customers', audienceCount: 1240, sent: 1240, delivered: 1198, read: 980, failed: 42, status: 'sent', scheduledAt: '2025-08-09 10:00', createdAt: '2025-08-08' },
                 { id: 'b2', name: 'New Product Launch', template: 'Welcome Message', audience: 'Active Leads', audienceCount: 560, sent: 560, delivered: 540, read: 410, failed: 20, status: 'sent', scheduledAt: '2025-08-10 14:00', createdAt: '2025-08-09' },
@@ -85,35 +78,29 @@ class AppStateService {
         return this.state.templates.find((template) => template.id === id) || null;
     }
     hydrateTemplatesFromMeta(metaTemplates = []) {
-        const metaByKey = new Map();
-        const metaByName = new Map();
-
-        for (const template of metaTemplates) {
-            const name = String(template?.name || '').trim().toLowerCase();
-            const language = normalizeLanguage(template?.language);
-            if (name) {
-                metaByName.set(name, template);
-            }
-            if (name && language) {
-                metaByKey.set(`${name}::${language}`, template);
-            }
-        }
-
-        this.state.templates = this.state.templates.map((template) => {
-            const key = `${String(template.name || '').trim().toLowerCase()}::${normalizeLanguage(template.language)}`;
-            const meta = metaByKey.get(key) || metaByName.get(String(template.name || '').trim().toLowerCase());
-            if (!meta) return template;
+        this.state.templates = metaTemplates.map((meta) => {
+            const body = (meta.components || []).find((component) => String(component?.type || '').toUpperCase() === 'BODY');
+            const bodyText = String(body?.text || '').trim();
+            const variables = Array.from(new Set(bodyText.match(/\{\{\d+\}\}/g) || [])).length;
+            const category = String(meta.category || 'utility').toLowerCase();
 
             return {
-                ...template,
-                metaId: meta.id || template.metaId,
-                metaStatus: meta.status || template.metaStatus,
-                metaLanguage: meta.language || template.metaLanguage,
-                metaCategory: meta.category || template.metaCategory,
-                metaQualityScore: meta.quality_score || template.metaQualityScore,
-                metaPreviousCategory: meta.previous_category || template.metaPreviousCategory,
+                id: meta.id || `${meta.name}:${meta.language}`,
+                name: meta.name,
+                category: ['marketing', 'utility', 'authentication'].includes(category) ? category : 'utility',
+                language: meta.language || 'en_US',
+                body: bodyText,
+                status: normalizeTemplateStatus(meta.status),
+                createdAt: meta.last_updated_time || today(),
+                variables,
+                metaId: meta.id,
+                metaStatus: meta.status,
+                metaLanguage: meta.language,
+                metaCategory: meta.category,
+                metaQualityScore: meta.quality_score,
+                metaPreviousCategory: meta.previous_category,
+                metaReason: meta.rejected_reason || null,
                 metaSyncedAt: new Date().toISOString(),
-                status: normalizeTemplateStatus(meta.status) || template.status,
             };
         });
 

@@ -174,13 +174,21 @@ router.get('/analytics/summary', requireAppToken, (req, res) => {
 });
 
 router.get('/:collection', requireAppToken, requireCollection, async (req, res) => {
-    if (req.params.collection === 'templates' && metaTemplates.isConfigured()) {
+    if (req.params.collection === 'templates') {
+        if (!metaTemplates.isConfigured()) {
+            return res.status(503).json({
+                success: false,
+                message: 'Meta template sync is not configured. Add ACCESS_TOKEN and WABA_ID to the backend environment.',
+            });
+        }
+
         try {
             const metaList = await metaTemplates.listTemplates();
-            const merged = appState.hydrateTemplatesFromMeta(metaList);
-            return res.json({ success: true, data: merged });
+            return res.json({ success: true, data: appState.hydrateTemplatesFromMeta(metaList) });
         } catch (err) {
-            console.log('Meta template sync failed:', err.response?.data || err.message || err);
+            const details = err.response?.data || err.message || 'Unknown Meta API error';
+            console.log('Meta template sync failed:', details);
+            return res.status(502).json({ success: false, message: 'Meta templates fetch nahi ho sake', details });
         }
     }
 

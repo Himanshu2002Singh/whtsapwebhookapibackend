@@ -70,7 +70,7 @@ class MetaTemplatesService {
             const response = await axiosClient.get(`/${wabaId}/message_templates`, {
                 params: {
                     limit: 100,
-                    fields: 'name,status,language,category,components,quality_score,previous_category,last_updated_time',
+                    fields: 'name,status,language,category,components,quality_score,previous_category,rejected_reason,last_updated_time',
                     ...(after ? { after } : {}),
                 },
             });
@@ -92,7 +92,7 @@ class MetaTemplatesService {
         const response = await axiosClient.get(`/${wabaId}/message_templates`, {
             params: {
                 name,
-                fields: 'name,status,language,category,components,quality_score,previous_category,last_updated_time',
+                fields: 'name,status,language,category,components,quality_score,previous_category,rejected_reason,last_updated_time',
             },
         });
 
